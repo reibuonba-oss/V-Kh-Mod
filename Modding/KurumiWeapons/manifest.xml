@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Manifest>
+  <ID>kurumi_weapons</ID>
+  <Name>Kurumi — Vũ khí độc quyền</Name>
+  <Author>Kurumi Weapons Project</Author>
+  <ModVersion>1.0.0</ModVersion>
+  <Description>Thêm hai khẩu súng độc quyền của Kurumi: súng trường cổ điển và súng lục cổ điển. Cả hai dùng cơ chế súng gốc của game, có hình ảnh và giá bán riêng.</Description>
+  <GameVersions>
+    <Version>1.0.0</Version>
+  </GameVersions>
+  <Prerequisites />
+  <Assemblies>
+    <Assembly>KurumiWeapons.dll</Assembly>
+  </Assemblies>
+  <Capabilities />
+</Manifest>
