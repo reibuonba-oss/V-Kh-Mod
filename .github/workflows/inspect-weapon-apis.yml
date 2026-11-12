@@ -1,0 +1,63 @@
+name: Inspect Probably Stolen weapon item APIs
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [kurumi-weapons-v1]
+    paths:
+      - ".github/workflows/inspect-weapon-apis.yml"
+      - "Manager.zip"
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Extract game assemblies
+        shell: pwsh
+        run: |
+          $archive = Join-Path $env:GITHUB_WORKSPACE "Manager.zip"
+          $out = Join-Path $env:RUNNER_TEMP "PS-Manager"
+          New-Item -ItemType Directory -Force -Path $out | Out-Null
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          [System.IO.Compression.ZipFile]::ExtractToDirectory($archive, $out, $true)
+          $asmFile = Get-ChildItem -Path $out -Filter "Assembly-CSharp.dll" -Recurse -File | Select-Object -First 1
+          if (-not $asmFile) { throw "Assembly-CSharp.dll was not found in Manager.zip" }
+          "GAME_MANAGED=$($asmFile.Directory.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Inspect weapon, item and directory APIs
+        shell: pwsh
+        run: |
+          $asm = [System.Reflection.Assembly]::LoadFrom((Join-Path $env:GAME_MANAGED "Assembly-CSharp.dll"))
+          try { $types = $asm.GetTypes() } catch [System.Reflection.ReflectionTypeLoadException] { $types = $_.Exception.Types | Where-Object { $null -ne $_ } }
+          $flags = [System.Reflection.BindingFlags]::Public -bor [System.Reflection.BindingFlags]::NonPublic -bor [System.Reflection.BindingFlags]::Instance -bor [System.Reflection.BindingFlags]::Static -bor [System.Reflection.BindingFlags]::DeclaredOnly
+          $wanted = @("GameItem","ItemDirectory","ModItemDirectory","GunsItemDirectory","MeleeWeaponItemDirectory","TypeHelper","ModHook","StoreClient","PlayerStore","ItemSpawner")
+          foreach ($t in ($types | Where-Object { $wanted -contains $_.Name -or $_.Name -match "Gun|Weapon|Firearm|Ammo|Ammunition" } | Sort-Object FullName)) {
+            Write-Host ""
+            Write-Host "================ TYPE $($t.FullName) ================="
+            foreach ($f in ($t.GetFields($flags) | Sort-Object Name)) {
+              if ($t.Name -ne "GameItem" -or $f.Name -match "weapon|gun|ammo|value|type|fire|damage|range|reload|slot|melee|shot|caliber|projectile") {
+                Write-Host ("FIELD " + $f.FieldType.FullName + " " + $f.Name + " static=" + $f.IsStatic)
+              }
+            }
+            foreach ($p in ($t.GetProperties($flags) | Sort-Object Name)) {
+              if ($t.Name -ne "GameItem" -or $p.Name -match "weapon|gun|ammo|value|type|fire|damage|range|reload|slot|melee|shot|caliber|projectile") {
+                Write-Host ("PROP " + $p.PropertyType.FullName + " " + $p.Name)
+              }
+            }
+            foreach ($m in ($t.GetMethods($flags) | Sort-Object Name)) {
+              if ($t.Name -ne "GameItem" -or $m.Name -match "weapon|gun|ammo|value|type|fire|damage|range|reload|slot|melee|shot|caliber|projectile|Create|Add|Set|Register") {
+                $pars = ($m.GetParameters() | ForEach-Object { $_.ParameterType.Name + " " + $_.Name }) -join ", "
+                Write-Host ("METHOD " + $m.ReturnType.Name + " " + $m.Name + "(" + $pars + ") static=" + $m.IsStatic)
+              }
+            }
+            foreach ($e in ($t.GetEvents($flags) | Sort-Object Name)) {
+              Write-Host ("EVENT " + $e.EventHandlerType.FullName + " " + $e.Name)
+            }
+          }
+          $types | Where-Object { $_.Name -match "Gun|Weapon|Firearm|Ammo|Ammunition" } | ForEach-Object { Write-Host ("TYPE-MATCH " + $_.FullName) }
